@@ -1,5 +1,5 @@
 This Python script is designed to download hourly climate observations data from the Meteorological Service of Canada for a specified weather station and time range. It then allows users to visualize this data by plotting a wind rose using PySimpleGUI and Matplotlib.
-
+url: https://dd.meteo.gc.ca/climate/observations/hourly/csv/QC/
 Here's a breakdown of the code:
 
 1. **Imports**: The script imports necessary libraries, including `os`, `requests`, `pandas`, `PySimpleGUI`, `io`, `matplotlib.pyplot`, `numpy`, and `FigureCanvasTkAgg` from `matplotlib.backends.backend_tkagg`.
