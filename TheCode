@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Oct 5 21:35:11 2023
+
+@author: hay001
+"""
+import os
+import requests
+import pandas as pd
+import PySimpleGUI as sg
+import io
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+# Function to download CSV data
+def download_data(st_id, year_start, year_end, output_folder):
+    base_url = "https://dd.meteo.gc.ca/climate/observations/hourly/csv/QC/"
+
+    # Create the output folder if it doesn't exist
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    # Initialize a list to store dataframes for each year
+    dataframes = []
+
+    # Loop through the years
+    for year in range(year_start, year_end + 1):
+        # Construct the filename
+        filename = f"climate_hourly_QC_{st_id}_{year}_P1H.csv"
+        file_url = base_url + filename
+
+        # Check if the file exists
+        response = requests.head(file_url)
+        if response.status_code == 200:
+            # Download the CSV file and store it in a dataframe
+            response = requests.get(file_url)
+            data = pd.read_csv(io.StringIO(response.text), encoding='latin1')
+            dataframes.append(data)
+            print(f"Downloaded: {filename}")
+        else:
+            print(f"File not found for year {year}")
+
+    # Merge all downloaded CSV files into a single dataframe
+    merged_data = pd.concat(dataframes, ignore_index=True)
+
+    # Save the merged data to the final output file
+    output_file = os.path.join(output_folder, f"climate_{st_id}_{year_start}_{year_end}.csv")
+    merged_data.to_csv(output_file, index=False)
+
+    print(f"Saved merged data to {output_file}")
+
+# Function to plot wind rose
+def plot_wind_rose(csv_file_path, window):
+    # Read the CSV file into a DataFrame
+    df = pd.read_csv(csv_file_path)
+
+    # Filter out rows with missing wind direction or wind speed values
+    df = df.dropna(subset=['Wind Dir (10s deg)', 'Wind Spd (km/h)'])
+    
+    # Convert wind direction from 10s deg to degrees
+    wind_dir_deg = df['Wind Dir (10s deg)'] * 10
+
+    # Define wind direction bins
+    wind_dir_bins = [0, 45, 90, 135, 180, 225, 270, 315, 360]
+    wind_dir_labels = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+
+    # Categorize wind direction
+    df['Wind Dir Category'] = pd.cut(wind_dir_deg, bins=wind_dir_bins, labels=wind_dir_labels, right=False)
+
+    # Group by wind direction category and calculate mean wind speed
+    grouped = df.groupby('Wind Dir Category')['Wind Spd (km/h)'].mean()
+
+    # Convert wind speed to numpy array
+    wind_speed = grouped.values
+
+    # Number of bins
+    num_bins = len(wind_speed)
+
+    # Create a wind rose plot
+    fig = plt.Figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, polar=True)
+
+    # Angles for each bin
+    theta = np.linspace(0, 2 * np.pi, num_bins, endpoint=False).tolist()
+
+    # Width of each bin
+    width = np.pi / (len(wind_speed) / 2)
+
+    # Plot the wind rose
+    bars = ax.bar(theta, wind_speed, width=width, bottom=0.0)
+
+    # Add labels
+    ax.set_theta_direction(-1)
+    ax.set_theta_zero_location("N")
+    ax.set_xticks(theta)
+    ax.set_xticklabels(wind_dir_labels)
+
+    # Add title
+    ax.set_title('Wind Rose')
+
+    # Convert plot to tkinter canvas
+    canvas = FigureCanvasTkAgg(fig, window['-CANVAS-'].TKCanvas)
+    canvas.draw()
+    canvas.get_tk_widget().pack(side='top', fill='both', expand=1)
+
+    print(f"Plotting wind rose for file: {csv_file_path}")
+
+# GUI Layout
+layout = [
+    [sg.Text(('Station ID:'), size=(10,1)), sg.InputText(key='st_id')],
+    [sg.Text(('Start Year:'), size=(10,1)), sg.InputText(key='year_start')],
+    [sg.Text(('End Year:'), size=(10,1)), sg.InputText(key='year_end')],
+    [sg.Text(('Output rep.:'), size=(10,1)), sg.InputText(key='output_folder'), sg.FolderBrowse()],
+    [sg.Button(('Download'), size=(10,1)), sg.Button('Plot Wind Rose'), sg.Exit()],
+    [sg.Canvas(key='-CANVAS-', size=(200,20))],
+]
+
+# Create the GUI window
+window = sg.Window('Weather Data Downloader', layout)
+
+# Event loop
+while True:
+    event, values = window.read()
+    if event == sg.WINDOW_CLOSED or event == 'Exit':
+        break
+    elif event == 'Download':
+        st_id = values['st_id']
+        year_start = int(values['year_start'])
+        year_end = int(values['year_end'])
+        output_folder = values['output_folder']
+        download_data(st_id, year_start, year_end, output_folder)
+        sg.popup('Download completed!')
+    elif event == 'Plot Wind Rose':
+        csv_file_path = sg.popup_get_file('Select CSV File for Wind Rose', file_types=(("CSV Files", "*.csv"),))
+        if csv_file_path:
+            plot_wind_rose(csv_file_path, window)
+
+window.close()
